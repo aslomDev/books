@@ -1,0 +1,57 @@
+WITH unique_user_devices AS (                                                                                                                                                 
+      SELECT DISTINCT ON (u.id, COALESCE(d.device_token, d.id::text))                                                                                                           
+          u.id            AS user_id,
+          u.username,                                                                                                                                                           
+          u.full_name,
+          u.pinfl,
+          d.id            AS device_id,                                                                                                                                         
+          d.device_name,
+          d.platform,                                                                                                                                                           
+          d.status        AS device_status,
+          d.last_in,
+          d.created_date  AS device_registered_at,                                                                                                                              
+          ud.face_verified,
+          ud.verified_at                                                                                                                                                        
+      FROM "user" u
+      JOIN user_device ud ON ud.user_id = u.id
+      JOIN device d       ON d.id = ud.device_id                                                                                                                                
+      WHERE u.verified = true
+        AND d.last_in IS NOT NULL                                                                                                                                               
+        AND d.last_in >= '2026-04-01'
+      ORDER BY u.id,                                                                                                                                                            
+               COALESCE(d.device_token, d.id::text),
+               d.last_in DESC   -- keep the most-recent login for duplicate device tokens                                                                                       
+  )                                                                                                                                                                             
+  SELECT *
+  FROM unique_user_devices                                                                                                                                                      
+  ORDER BY last_in DESC;
+                                                                                                                                                                                
+  ---
+  Summary statistics                                                                                                                                                            
+                  
+  WITH unique_user_devices AS (
+      SELECT DISTINCT ON (u.id, COALESCE(d.device_token, d.id::text))
+          u.id            AS user_id,                                                                                                                                           
+          d.platform,
+          d.status        AS device_status,                                                                                                                                     
+          ud.face_verified
+      FROM "user" u                                                                                                                                                             
+      JOIN user_device ud ON ud.user_id = u.id
+      JOIN device d       ON d.id = ud.device_id                                                                                                                                
+      WHERE u.verified = true
+        AND d.last_in IS NOT NULL
+        AND d.last_in >= '2026-04-01'                                                                                                                                           
+      ORDER BY u.id,
+               COALESCE(d.device_token, d.id::text),                                                                                                                            
+               d.last_in DESC
+  )                                                                                                                                                                             
+  SELECT
+      COUNT(DISTINCT user_id)                                          AS total_users,                                                                                          
+      COUNT(*)                                                         AS total_device_sessions,
+      COUNT(*) FILTER (WHERE platform = 'ANDROID')                    AS android,                                                                                               
+      COUNT(*) FILTER (WHERE platform IN ('IOS', 'IPHONE'))           AS ios,
+      COUNT(*) FILTER (WHERE platform = 'WEB')                        AS web,                                                                                                   
+      COUNT(*) FILTER (WHERE face_verified = true)                    AS face_verified,
+      COUNT(*) FILTER (WHERE device_status = 'ACTIVE')                AS active_devices,                                                                                        
+      COUNT(*) FILTER (WHERE device_status = 'BLOCKED')               AS blocked_devices
+  FROM unique_user_devices;     
